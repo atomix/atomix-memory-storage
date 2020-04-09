@@ -21,7 +21,7 @@ import (
 	"strconv"
 
 	api "github.com/atomix/api/proto/atomix/controller"
-	"github.com/atomix/cache-storage/pkg/apis/storage/v1beta1"
+	"github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
 	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta2"
 	"github.com/golang/protobuf/jsonpb"
 	appsv1 "k8s.io/api/apps/v1"

@@ -15,7 +15,7 @@
 package apis
 
 import (
-	cachev1beta1 "github.com/atomix/cache-storage/pkg/apis/storage/v1beta1"
+	cachev1beta1 "github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
 	atomixv1beta2 "github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta2"
 )
 
