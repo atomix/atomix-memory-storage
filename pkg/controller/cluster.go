@@ -83,6 +83,11 @@ func (r *Reconciler) addDeployment(cluster *v1beta2.Cluster, storage *v1beta1.Ca
 		newConfigVolumeMount(),
 	}
 
+	image := storage.Spec.Image
+	if image == "" {
+		image = "atomix/cache-storage-node:latest"
+	}
+
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: cluster.Namespace,
@@ -104,7 +109,7 @@ func (r *Reconciler) addDeployment(cluster *v1beta2.Cluster, storage *v1beta1.Ca
 					Containers: []corev1.Container{
 						{
 							Name:            storage.Name,
-							Image:           storage.Spec.Image,
+							Image:           image,
 							ImagePullPolicy: storage.Spec.ImagePullPolicy,
 							Args:            args,
 							Env:             env,

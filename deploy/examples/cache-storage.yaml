@@ -5,7 +5,7 @@ metadata:
     labels:
       app: default-cache
 spec:
-  image: atomix/cache-storage:latest
+  image: atomix/cache-storage-node:latest
   imagePullPolicy: IfNotPresent
 ---
 apiVersion: cloud.atomix.io/v1beta2
