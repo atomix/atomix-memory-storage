@@ -21,17 +21,17 @@ deps: # @HELP ensure that the required dependencies are in place
 	bash -c "diff -u <(echo -n) <(git diff go.sum)"
 
 test: # @HELP run the unit tests and source code validation
-test: build license_check linters
+test: build
 	go test github.com/atomix/cache-storage-controller/...
 
 linters: # @HELP examines Go source code and reports coding problems
-	GOGC=75  golangci-lint run
+	GOGC=50  golangci-lint run
 
 license_check: # @HELP examine and ensure license headers exist
 	./build/licensing/boilerplate.py -v
 
-images: # @HELP build cache-storage Docker image
-images: build
+image: # @HELP build cache-storage Docker image
+image: build
 	docker build . -f build/cache-storage-controller/Dockerfile -t atomix/cache-storage-controller:${STORAGE_CONTROLLER_VERSION}
 
 push: # @HELP push cache-storage Docker image
