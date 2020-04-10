@@ -21,7 +21,7 @@ deps: # @HELP ensure that the required dependencies are in place
 	bash -c "diff -u <(echo -n) <(git diff go.sum)"
 
 test: # @HELP run the unit tests and source code validation
-test: build license_check linters
+test: build
 	go test github.com/atomix/cache-storage-controller/...
 
 linters: # @HELP examines Go source code and reports coding problems
