@@ -30,8 +30,8 @@ linters: # @HELP examines Go source code and reports coding problems
 license_check: # @HELP examine and ensure license headers exist
 	./build/licensing/boilerplate.py -v
 
-images: # @HELP build cache-storage Docker image
-images: build
+image: # @HELP build cache-storage Docker image
+image: build
 	docker build . -f build/cache-storage-controller/Dockerfile -t atomix/cache-storage-controller:${STORAGE_CONTROLLER_VERSION}
 
 push: # @HELP push cache-storage Docker image
