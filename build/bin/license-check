@@ -8,4 +8,4 @@ fi
 
 git -C build/tools checkout v0.6.0
 
-./build/tools/licensing/boilerplate.py -v --rootdir=${CURDIR}
+./build/tools/licensing/boilerplate.py -v --rootdir=.
