@@ -11,6 +11,7 @@ notifications:
 branches:
   only:
     - master
+    - /^v\d+\.\d+(\.\d+)?(-\S*)?$/
 
 cache:
   directories:
@@ -24,4 +25,14 @@ jobs:
     - stage: test
       script:
         - make test
-        - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then bash ./build/bin/push-images; fi'
+
+deploy:
+  - provider: script
+    script: 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then bash ./build/bin/push-images; fi'
+    on:
+      branch: master
+  - provider: script
+    script: VERSION=$TRAVIS_TAG ./build/bin/push-images
+    on:
+      tags: true
+      all_branches: true
