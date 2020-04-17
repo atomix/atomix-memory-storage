@@ -17,8 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	controller "github.com/atomix/cache-storage-controller/pkg/controller"
+	"github.com/atomix/cache-storage-controller/pkg/controller"
 
 	"os"
 	"runtime"
@@ -47,6 +48,8 @@ func main() {
 	}
 
 	printVersion()
+
+	logf.SetLogger(zap.New())
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
