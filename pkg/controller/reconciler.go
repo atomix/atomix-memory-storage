@@ -462,7 +462,7 @@ func getNodes(database *v1beta3.Database, storage *v1beta1.CacheStorageClass) in
 	if partitionsPerNode == 0 {
 		partitionsPerNode = 1
 	}
-	return int(math.Ceil(float64(database.Spec.Partitions) / float64(partitionsPerNode)))
+	return int(math.Ceil(float64(partitions) / float64(partitionsPerNode)))
 }
 
 // getNodeForPartition returns the Node ID for the given partition ID
@@ -473,11 +473,6 @@ func getNodeForPartition(database *v1beta3.Database, storage *v1beta1.CacheStora
 // getNodeForPartitionID returns the Node ID for the given partition ID
 func getNodeForPartitionID(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, partition int) int {
 	return (partition % getNodes(database, storage)) + 1
-}
-
-// getNodeResourceName returns the given resource name for the given Node
-func getNodeResourceName(database *v1beta3.Database, node int, resource string) string {
-	return fmt.Sprintf("%s-%s", getNodeName(database, node), resource)
 }
 
 // getNodeName returns the Node name
