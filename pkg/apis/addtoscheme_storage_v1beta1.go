@@ -16,12 +16,12 @@ package apis
 
 import (
 	cachev1beta1 "github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
-	atomixv1beta2 "github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta2"
+	atomixv1beta3 "github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
 )
 
 func init() {
 	// register the types with the Scheme so the components can map objects to GroupVersionKinds and back
 	AddToSchemes = append(AddToSchemes, cachev1beta1.SchemeBuilder.AddToScheme)
-	AddToSchemes = append(AddToSchemes, atomixv1beta2.SchemeBuilder.AddToScheme)
+	AddToSchemes = append(AddToSchemes, atomixv1beta3.SchemeBuilder.AddToScheme)
 
 }

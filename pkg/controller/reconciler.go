@@ -16,63 +16,45 @@ package controller
 
 import (
 	"context"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/source"
-
+	"fmt"
+	api "github.com/atomix/api/proto/atomix/controller"
 	"github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
-	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta2"
-	"github.com/atomix/kubernetes-controller/pkg/controller/v1beta2/util/k8s"
+	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
+	"github.com/atomix/kubernetes-controller/pkg/controller/util/k8s"
+	"github.com/gogo/protobuf/jsonpb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	configVolume = "config"
+)
+
+const (
+	apiPort = 5678
+)
+
+const (
+	configPath         = "/etc/atomix"
+	clusterConfigFile  = "cluster.json"
+	protocolConfigFile = "protocol.json"
+)
+
+const (
+	nodeLabel = "node"
+)
+
 var log = logf.Log.WithName("cache_storage_controller")
-
-// Add creates a new Partition ManagementGroup and adds it to the Manager. The Manager will set fields on the ManagementGroup
-// and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	log.Info("Add manager")
-
-	r := &Reconciler{
-		client: mgr.GetClient(),
-		scheme: mgr.GetScheme(),
-	}
-
-	// Create a new controller
-	c, err := controller.New(mgr.GetScheme().Name(), mgr, controller.Options{Reconciler: r})
-	if err != nil {
-		return err
-	}
-
-	// Watch for changes to the storage resource and enqueue Clusters that reference it
-	err = c.Watch(&source.Kind{Type: &v1beta1.CacheStorageClass{}}, &handler.EnqueueRequestsFromMapFunc{
-		ToRequests: &clusterMapper{
-			client: r.client,
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Watch for changes to referencing resource Clusters
-	err = c.Watch(&source.Kind{Type: &v1beta2.Cluster{}}, &handler.EnqueueRequestsFromMapFunc{
-		ToRequests: &storageFilter{
-			client: r.client,
-		},
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
 var _ reconcile.Reconciler = &Reconciler{}
 
@@ -85,127 +67,382 @@ type Reconciler struct {
 // Reconcile reads that state of the cluster for a Cluster object and makes changes based on the state read
 // and what is in the Cluster.Spec
 func (r *Reconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	log.Info("Reconcile Cluster")
-	cluster := &v1beta2.Cluster{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, cluster)
+	log.Info("Reconcile Database")
+	database := &v1beta3.Database{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, database)
 	if err != nil {
+		log.Error(err, "Reconcile Database")
 		if k8serrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{Requeue: true}, err
 	}
 
+	log.Info("Reconcile CacheStorageClass")
 	storage := &v1beta1.CacheStorageClass{}
-	namespace := cluster.Spec.Storage.Namespace
+	namespace := database.Spec.StorageClass.Namespace
 	if namespace == "" {
-		namespace = cluster.Namespace
+		namespace = database.Namespace
 	}
 	name := types.NamespacedName{
 		Namespace: namespace,
-		Name:      cluster.Spec.Storage.Name,
+		Name:      database.Spec.StorageClass.Name,
 	}
 	err = r.client.Get(context.TODO(), name, storage)
 	if err != nil {
+		log.Error(err, "Reconcile CacheStorageClass")
 		if k8serrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	err = r.reconcileConfigMap(cluster, storage)
+	log.Info("Reconcile Clusters")
+	err = r.reconcileNodes(database, storage)
 	if err != nil {
+		log.Error(err, "Reconcile Clusters")
 		return reconcile.Result{}, err
 	}
 
-	err = r.reconcileDeployment(cluster, storage)
+	log.Info("Reconcile Partitions")
+	err = r.reconcilePartitions(database, storage)
 	if err != nil {
+		log.Error(err, "Reconcile Partitions")
 		return reconcile.Result{}, err
 	}
 
-	err = r.reconcileService(cluster, storage)
+	log.Info("Reconcile Status")
+	err = r.reconcileStatus(database, storage)
 	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	err = r.reconcileStatus(cluster, storage)
-	if err != nil {
+		log.Error(err, "Reconcile Status")
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
 }
 
-func (r *Reconciler) reconcileConfigMap(cluster *v1beta2.Cluster, storage *v1beta1.CacheStorageClass) error {
-	log.Info("Reconcile cache storage config map")
-	cm := &corev1.ConfigMap{}
-	name := types.NamespacedName{
-		Namespace: cluster.Namespace,
-		Name:      cluster.Name,
-	}
-	err := r.client.Get(context.TODO(), name, cm)
-	if err != nil && k8serrors.IsNotFound(err) {
-		err = r.addConfigMap(cluster, storage)
-	}
-	return err
-}
-
-func (r *Reconciler) reconcileDeployment(cluster *v1beta2.Cluster, storage *v1beta1.CacheStorageClass) error {
-	log.Info("Reconcile cache storage deployment")
-	dep := &appsv1.Deployment{}
-	name := types.NamespacedName{
-		Namespace: cluster.Namespace,
-		Name:      cluster.Name,
-	}
-	err := r.client.Get(context.TODO(), name, dep)
-	if err != nil && k8serrors.IsNotFound(err) {
-		err = r.addDeployment(cluster, storage)
-	}
-	return err
-}
-
-func (r *Reconciler) reconcileService(cluster *v1beta2.Cluster, storage *v1beta1.CacheStorageClass) error {
-	log.Info("Reconcile cache storage service")
-	service := &corev1.Service{}
-	name := types.NamespacedName{
-		Namespace: cluster.Namespace,
-		Name:      cluster.Name,
-	}
-	err := r.client.Get(context.TODO(), name, service)
-	if err != nil && k8serrors.IsNotFound(err) {
-		err = r.addService(cluster, storage)
-	}
-	return err
-}
-
-func (r *Reconciler) reconcileStatus(cluster *v1beta2.Cluster, storage *v1beta1.CacheStorageClass) error {
-	dep := &appsv1.Deployment{}
-	name := types.NamespacedName{
-		Namespace: cluster.Namespace,
-		Name:      cluster.Name,
-	}
-	err := r.client.Get(context.TODO(), name, dep)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	if cluster.Status.ReadyPartitions < cluster.Spec.Partitions &&
-		dep.Status.ReadyReplicas == dep.Status.Replicas {
-		clusterID, err := k8s.GetClusterIDFromClusterAnnotations(cluster)
+func (r *Reconciler) reconcileNodes(database *v1beta3.Database, storage *v1beta1.CacheStorageClass) error {
+	nodes := getNodes(database, storage)
+	for node := 1; node <= nodes; node++ {
+		err := r.reconcileNode(database, storage, node)
 		if err != nil {
 			return err
 		}
-		for partitionID := (cluster.Spec.Partitions * (clusterID - 1)) + 1; partitionID <= cluster.Spec.Partitions*clusterID; partitionID++ {
-			partition := &v1beta2.Partition{}
-			err := r.client.Get(context.TODO(), k8s.GetPartitionNamespacedName(cluster, partitionID), partition)
-			if err != nil && !k8serrors.IsNotFound(err) {
+	}
+	return nil
+}
+
+func (r *Reconciler) reconcileNode(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	err := r.reconcileConfigMap(database, storage, node)
+	if err != nil {
+		return err
+	}
+
+	err = r.reconcileDeployment(database, storage, node)
+	if err != nil {
+		return err
+	}
+
+	err = r.reconcileService(database, storage, node)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Reconciler) reconcileConfigMap(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Reconcile cache storage config map")
+	cm := &corev1.ConfigMap{}
+	name := types.NamespacedName{
+		Namespace: database.Namespace,
+		Name:      getNodeName(database, node),
+	}
+	err := r.client.Get(context.TODO(), name, cm)
+	if err != nil && k8serrors.IsNotFound(err) {
+		err = r.addConfigMap(database, storage, node)
+	}
+	return err
+}
+
+func (r *Reconciler) addConfigMap(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Creating ConfigMap", "Name", getNodeName(database, node), "Namespace", database.Namespace)
+	config, err := newClusterConfig(database, storage, node)
+	if err != nil {
+		return err
+	}
+
+	marshaller := jsonpb.Marshaler{}
+	data, err := marshaller.MarshalToString(config)
+	if err != nil {
+		return err
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: database.Namespace,
+			Name:      getNodeName(database, node),
+			Labels:    newNodeLabels(database, node),
+		},
+		Data: map[string]string{
+			clusterConfigFile: data,
+		},
+	}
+	if err := controllerutil.SetControllerReference(database, cm, r.scheme); err != nil {
+		return err
+	}
+	return r.client.Create(context.TODO(), cm)
+}
+
+// newNodeConfigString creates a node configuration string for the given cluster
+func newClusterConfig(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) (*api.ClusterConfig, error) {
+	members := []*api.MemberConfig{
+		{
+			ID:           getNodeName(database, node),
+			Host:         fmt.Sprintf("%s.%s.svc.cluster.local", getNodeName(database, node), database.Namespace),
+			ProtocolPort: apiPort,
+			APIPort:      apiPort,
+		},
+	}
+
+	partitions := make([]*api.PartitionId, 0, database.Spec.Partitions)
+	for partitionID := 1; partitionID <= int(database.Spec.Partitions); partitionID++ {
+		if getNodeForPartitionID(database, storage, partitionID) == node {
+			partition := &api.PartitionId{
+				Partition: int32(partitionID),
+				Cluster: &api.ClusterId{
+					ID: int32(node),
+					DatabaseID: &api.DatabaseId{
+						Name:      database.Name,
+						Namespace: database.Namespace,
+					},
+				},
+			}
+			partitions = append(partitions, partition)
+		}
+	}
+
+	return &api.ClusterConfig{
+		Members:    members,
+		Partitions: partitions,
+	}, nil
+}
+
+func (r *Reconciler) reconcileDeployment(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Reconcile cache storage deployment")
+	dep := &appsv1.Deployment{}
+	name := types.NamespacedName{
+		Namespace: database.Namespace,
+		Name:      getNodeName(database, node),
+	}
+	err := r.client.Get(context.TODO(), name, dep)
+	if err != nil && k8serrors.IsNotFound(err) {
+		err = r.addDeployment(database, storage, node)
+	}
+	return err
+}
+
+func (r *Reconciler) addDeployment(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Creating Deployment", "Name", getNodeName(database, node), "Namespace", database.Namespace)
+	var replicas int32 = 1
+	image := storage.Spec.Image
+	if image == "" {
+		image = "atomix/cache-storage-node:latest"
+	}
+
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: database.Namespace,
+			Name:      getNodeName(database, node),
+			Labels:    newNodeLabels(database, node),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: newNodeLabels(database, node),
+			},
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      getNodeName(database, node),
+					Namespace: database.Namespace,
+					Labels:    newNodeLabels(database, node),
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:            storage.Name,
+							Image:           image,
+							ImagePullPolicy: storage.Spec.ImagePullPolicy,
+							Args: []string{
+								"$(NODE_ID)",
+								fmt.Sprintf("%s/%s", configPath, clusterConfigFile),
+								fmt.Sprintf("%s/%s", configPath, protocolConfigFile),
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "NODE_ID",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      configVolume,
+									MountPath: configPath,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: configVolume,
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: getNodeName(database, node),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := controllerutil.SetControllerReference(database, dep, r.scheme); err != nil {
+		return err
+	}
+	return r.client.Create(context.TODO(), dep)
+}
+
+func (r *Reconciler) reconcileService(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Reconcile cache storage service")
+	service := &corev1.Service{}
+	name := types.NamespacedName{
+		Namespace: database.Namespace,
+		Name:      getNodeName(database, node),
+	}
+	err := r.client.Get(context.TODO(), name, service)
+	if err != nil && k8serrors.IsNotFound(err) {
+		err = r.addService(database, storage, node)
+	}
+	return err
+}
+
+func (r *Reconciler) addService(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) error {
+	log.Info("Creating service", "Name", getNodeName(database, node), "Namespace", database.Namespace)
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: database.Namespace,
+			Name:      getNodeName(database, node),
+			Labels:    database.Labels,
+		},
+
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name: "api",
+					Port: apiPort,
+				},
+			},
+			PublishNotReadyAddresses: true,
+			ClusterIP:                "None",
+			Selector:                 newNodeLabels(database, node),
+		},
+	}
+	if err := controllerutil.SetControllerReference(database, service, r.scheme); err != nil {
+		return err
+	}
+	return r.client.Create(context.TODO(), service)
+}
+
+func (r *Reconciler) reconcilePartitions(database *v1beta3.Database, storage *v1beta1.CacheStorageClass) error {
+	options := &client.ListOptions{
+		Namespace:     database.Namespace,
+		LabelSelector: labels.SelectorFromSet(k8s.GetPartitionLabelsForDatabase(database)),
+	}
+	partitions := &v1beta3.PartitionList{}
+	err := r.client.List(context.TODO(), partitions, options)
+	if err != nil {
+		return err
+	}
+
+	for _, partition := range partitions.Items {
+		err := r.reconcilePartition(database, storage, partition)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) reconcilePartition(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, partition v1beta3.Partition) error {
+	service := &corev1.Service{}
+	name := types.NamespacedName{
+		Namespace: partition.Namespace,
+		Name:      partition.Spec.ServiceName,
+	}
+	err := r.client.Get(context.TODO(), name, service)
+	if err == nil || !k8serrors.IsNotFound(err) {
+		return err
+	}
+
+	node := getNodeForPartition(database, storage, &partition)
+	service = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:   partition.Namespace,
+			Name:        partition.Spec.ServiceName,
+			Labels:      partition.Labels,
+			Annotations: partition.Annotations,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: newNodeLabels(database, node),
+			Ports: []corev1.ServicePort{
+				{
+					Name: "api",
+					Port: 5678,
+				},
+			},
+		},
+	}
+	return r.client.Create(context.TODO(), service)
+}
+
+func (r *Reconciler) reconcileStatus(database *v1beta3.Database, storage *v1beta1.CacheStorageClass) error {
+	options := &client.ListOptions{
+		Namespace:     database.Namespace,
+		LabelSelector: labels.SelectorFromSet(k8s.GetPartitionLabelsForDatabase(database)),
+	}
+	partitions := &v1beta3.PartitionList{}
+	err := r.client.List(context.TODO(), partitions, options)
+	if err != nil {
+		return err
+	}
+
+	for _, partition := range partitions.Items {
+		if !partition.Status.Ready {
+			log.Info("Reconcile status", "Database", database.Name, "Partition", partition.Name, "ReadyPartitions")
+			node := getNodeForPartition(database, storage, &partition)
+
+			dep := &appsv1.Deployment{}
+			name := types.NamespacedName{
+				Namespace: getNodeName(database, node),
+				Name:      database.Name,
+			}
+			err := r.client.Get(context.TODO(), name, dep)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
 				return err
 			}
-			if !partition.Status.Ready {
+
+			if dep.Status.ReadyReplicas == dep.Status.Replicas {
 				partition.Status.Ready = true
 				log.Info("Updating Partition status", "Name", partition.Name, "Namespace", partition.Namespace, "Ready", partition.Status.Ready)
-				err = r.client.Status().Update(context.TODO(), partition)
+				err = r.client.Status().Update(context.TODO(), &partition)
 				if err != nil {
 					return err
 				}
@@ -215,59 +452,45 @@ func (r *Reconciler) reconcileStatus(cluster *v1beta2.Cluster, storage *v1beta1.
 	return nil
 }
 
-// clusterMapper is a request mapper that triggers the reconciler for referencing Clusters
-// when a RaftStorageClass is changed
-type clusterMapper struct {
-	client client.Client
+// getNodes returns the number of nodes in the given database
+func getNodes(database *v1beta3.Database, storage *v1beta1.CacheStorageClass) int {
+	partitions := database.Spec.Partitions
+	if partitions == 0 {
+		partitions = 1
+	}
+	partitionsPerNode := storage.Spec.PartitionsPerNode
+	if partitionsPerNode == 0 {
+		partitionsPerNode = 1
+	}
+	return int(math.Ceil(float64(database.Spec.Partitions) / float64(partitionsPerNode)))
 }
 
-func (m *clusterMapper) Map(object handler.MapObject) []reconcile.Request {
-	// Find all clusters that reference the changed storage
-	clusters := &v1beta2.ClusterList{}
-	err := m.client.List(context.TODO(), clusters, &client.ListOptions{})
-	if err != nil {
-		return []reconcile.Request{}
-	}
-
-	// Iterate through clusters and requeue any that reference the storage controller
-	requests := []reconcile.Request{}
-	for _, cluster := range clusters.Items {
-		if cluster.Spec.Storage.Group == v1beta1.CacheStorageClassGroup &&
-			cluster.Spec.Storage.Version == v1beta1.CacheStorageClassVersion &&
-			cluster.Spec.Storage.Kind == v1beta1.CacheStorageClassKind &&
-			cluster.Spec.Storage.Name == object.Meta.GetName() {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: cluster.GetNamespace(),
-					Name:      cluster.GetName(),
-				},
-			})
-		}
-	}
-	return requests
+// getNodeForPartition returns the Node ID for the given partition ID
+func getNodeForPartition(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, partition *v1beta3.Partition) int {
+	return getNodeForPartitionID(database, storage, int(partition.Spec.PartitionID))
 }
 
-// storageFilter is a request mapper that triggers the reconciler for the storage controller when
-// referenced by a watched Cluster
-type storageFilter struct {
-	client client.Client
+// getNodeForPartitionID returns the Node ID for the given partition ID
+func getNodeForPartitionID(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, partition int) int {
+	return (partition % getNodes(database, storage)) + 1
 }
 
-func (m *storageFilter) Map(object handler.MapObject) []reconcile.Request {
-	cluster := object.Object.(*v1beta2.Cluster)
+// getNodeResourceName returns the given resource name for the given Node
+func getNodeResourceName(database *v1beta3.Database, node int, resource string) string {
+	return fmt.Sprintf("%s-%s", getNodeName(database, node), resource)
+}
 
-	// If the Cluster references a CacheStorageClass, enqueue the request
-	if cluster.Spec.Storage.Group == v1beta1.CacheStorageClassGroup &&
-		cluster.Spec.Storage.Version == v1beta1.CacheStorageClassVersion &&
-		cluster.Spec.Storage.Kind == v1beta1.CacheStorageClassKind {
-		return []reconcile.Request{
-			{
-				NamespacedName: types.NamespacedName{
-					Namespace: cluster.GetNamespace(),
-					Name:      cluster.GetName(),
-				},
-			},
-		}
+// getNodeName returns the Node name
+func getNodeName(database *v1beta3.Database, node int) string {
+	return fmt.Sprintf("%s-%d", database.Name, node)
+}
+
+// newNodeLabels returns the labels for the given node
+func newNodeLabels(database *v1beta3.Database, node int) map[string]string {
+	labels := make(map[string]string)
+	for key, value := range database.Labels {
+		labels[key] = value
 	}
-	return []reconcile.Request{}
+	labels[nodeLabel] = fmt.Sprint(node)
+	return labels
 }

@@ -30,16 +30,14 @@ const CacheStorageClassKind = "CacheStorageClass"
 
 // CacheStorageClassSpec is the k8s spec for a CacheStorage resource
 type CacheStorageClassSpec struct {
+	// PartitionsPerNode is the number of partitions to store in each node
+	PartitionsPerNode int32 `json:"partitionsPerNode,omitempty"`
+
 	// Image is the image to run
 	Image string `json:"image,omitempty"`
 
 	// ImagePullPolicy is the pull policy to apply
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-}
-
-// CacheStorageClassStatus defines the observed state of CacheStorage
-type CacheStorageClassStatus struct {
-	Ready bool `json:"ready,omitempty"`
 }
 
 // +genclient
@@ -53,9 +51,6 @@ type CacheStorageClass struct {
 
 	// Spec is the CacheStorage specification
 	Spec CacheStorageClassSpec `json:"spec,omitempty"`
-
-	// Status if the current status of the CacheStorage
-	Status CacheStorageClassStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
