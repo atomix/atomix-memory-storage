@@ -4,8 +4,8 @@ go 1.13
 
 require (
 	cloud.google.com/go v0.43.0 // indirect
-	github.com/atomix/api v0.0.0-20200211005812-591fe8b07ea8
-	github.com/atomix/kubernetes-controller v0.3.0-beta.1
+	github.com/atomix/api v0.2.0
+	github.com/atomix/kubernetes-controller v0.4.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	go.uber.org/atomic v1.4.0 // indirect

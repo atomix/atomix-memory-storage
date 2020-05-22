@@ -17,7 +17,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	api "github.com/atomix/api/proto/atomix/controller"
+	api "github.com/atomix/api/proto/atomix/database"
 	"github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
 	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
 	"github.com/atomix/kubernetes-controller/pkg/controller/util/k8s"
@@ -193,8 +193,8 @@ func (r *Reconciler) addConfigMap(database *v1beta3.Database, storage *v1beta1.C
 }
 
 // newNodeConfigString creates a node configuration string for the given cluster
-func newClusterConfig(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) (*api.ClusterConfig, error) {
-	members := []*api.MemberConfig{
+func newClusterConfig(database *v1beta3.Database, storage *v1beta1.CacheStorageClass, node int) (*api.DatabaseConfig, error) {
+	replicas := []api.ReplicaConfig{
 		{
 			ID:           getNodeName(database, node),
 			Host:         fmt.Sprintf("%s.%s.svc.cluster.local", getNodeName(database, node), database.Namespace),
@@ -203,25 +203,18 @@ func newClusterConfig(database *v1beta3.Database, storage *v1beta1.CacheStorageC
 		},
 	}
 
-	partitions := make([]*api.PartitionId, 0, database.Spec.Partitions)
+	partitions := make([]api.PartitionId, 0, database.Spec.Partitions)
 	for partitionID := 1; partitionID <= int(database.Spec.Partitions); partitionID++ {
 		if getNodeForPartitionID(database, storage, partitionID) == node {
-			partition := &api.PartitionId{
+			partition := api.PartitionId{
 				Partition: int32(partitionID),
-				Cluster: &api.ClusterId{
-					ID: int32(node),
-					DatabaseID: &api.DatabaseId{
-						Name:      database.Name,
-						Namespace: database.Namespace,
-					},
-				},
 			}
 			partitions = append(partitions, partition)
 		}
 	}
 
-	return &api.ClusterConfig{
-		Members:    members,
+	return &api.DatabaseConfig{
+		Replicas:   replicas,
 		Partitions: partitions,
 	}, nil
 }
