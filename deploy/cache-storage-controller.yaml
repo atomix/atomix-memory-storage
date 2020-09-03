@@ -29,8 +29,8 @@ spec:
                   type: string
                 partitionsPerNode:
                   type: integer
-                  min: 1
-                  max: 1024
+                  minimum: 1
+                  maximum: 1024
                   default: 1
 ---
 apiVersion: v1
