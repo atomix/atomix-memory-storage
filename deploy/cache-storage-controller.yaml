@@ -32,17 +32,12 @@ spec:
                   min: 1
                   max: 1024
                   default: 1
-
-
 ---
-apiVersion: cloud.atomix.io/v1beta2
-kind: StorageController
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: cache
-spec:
-  group: storage.cloud.atomix.io
-  version: v1beta1
-  kind: CacheStorageClass
+  name: cache-storage-controller
+  namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -100,12 +95,6 @@ roleRef:
   name: cache-storage-controller
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: cache-storage-controller
-  namespace: kube-system
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -123,9 +112,8 @@ spec:
     spec:
       serviceAccountName: cache-storage-controller
       containers:
-        - name: cache-storage-controller
-          # Replace this with the built image name
-          image: atomix/cache-storage-controller:latest
+        - name: controller
+          image: atomix/cache-storage-controller:v0.3.0
           ports:
             - containerPort: 60000
               name: metrics
@@ -144,7 +132,7 @@ spec:
             failureThreshold: 1
           env:
             - name: CONTROLLER_NAME
-              value: "cache-storage-controller"
+              value: cache-storage-controller
             - name: CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
