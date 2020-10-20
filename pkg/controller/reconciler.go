@@ -54,6 +54,10 @@ const (
 	nodeLabel = "node"
 )
 
+const (
+	defaultImage = "atomix/cache-storage-node:v0.4.0"
+)
+
 var log = logf.Log.WithName("cache_storage_controller")
 
 var _ reconcile.Reconciler = &Reconciler{}
@@ -238,7 +242,7 @@ func (r *Reconciler) addDeployment(database *v1beta3.Database, storage *v1beta1.
 	var replicas int32 = 1
 	image := storage.Spec.Image
 	if image == "" {
-		image = "atomix/cache-storage-node:latest"
+		image = defaultImage
 	}
 
 	dep := &appsv1.Deployment{
