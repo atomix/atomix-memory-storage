@@ -55,7 +55,7 @@ const (
 )
 
 const (
-	defaultImage = "atomix/cache-storage-node:v0.5.0"
+	defaultImage = "atomix/cache-storage-node:v0.5.1"
 )
 
 var log = logf.Log.WithName("cache_storage_controller")
