@@ -1,0 +1,265 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: cachestorageclasses.storage.cloud.atomix.io
+spec:
+  group: storage.cloud.atomix.io
+  names:
+    kind: CacheStorageClass
+    listKind: CacheStorageClassList
+    plural: cachestorageclasses
+    singular: cachestorageclass
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        required:
+        - spec
+        properties:
+          spec:
+            type: object
+            properties:
+              image:
+                type: string
+              imagePullPolicy:
+                type: string
+              partitionsPerNode:
+                type: integer
+                minimum: 1
+                maximum: 1024
+                default: 1
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: memorystore.storage.atomix.io
+spec:
+  group: storage.atomix.io
+  names:
+    kind: MemoryStore
+    listKind: MemoryStoreList
+    plural: memorystores
+    singular: memorystore
+    shortNames:
+    - memstores
+    - memstore
+  scope: Namespaced
+  versions:
+  - name: v2beta1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        type: object
+        required:
+        - spec
+        properties:
+          spec:
+            type: object
+            properties:
+              clusters:
+                type: integer
+                minimum: 1
+                maximum: 1024
+                default: 1
+              partitions:
+                type: integer
+                minimum: 1
+                maximum: 1024
+                default: 1
+              image:
+                type: string
+              imagePullPolicy:
+                type: string
+              imagePullSecrets:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - name
+                  properties:
+                    name:
+                      type: string
+          status:
+            type: object
+            properties:
+              revision:
+                type: integer
+              replicas:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - id
+                  - host
+                  - port
+                  properties:
+                    id:
+                      type: string
+                    nodeId:
+                      type: string
+                    host:
+                      type: string
+                    port:
+                      type: integer
+                    extraPorts:
+                      type: object
+                      additionalProperties:
+                        type: integer
+                    ready:
+                      type: boolean
+              partitions:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - id
+                  - replicas
+                  properties:
+                    id:
+                      type: integer
+                      minimum: 1
+                    replicas:
+                      type: array
+                      items:
+                        type: string
+                    ready:
+                      type: boolean
+---
+apiVersion: atomix.io/v2beta1
+kind: StoragePlugin
+metadata:
+  name: memory.storage.atomix.io
+spec:
+  group: storage.atomix.io
+  kind: MemoryStore
+  versions:
+  - name: v2beta1
+    driver:
+      image: atomix/atomix-memory-storage-driver:v0.6.0
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: atomix-memory-storage-controller
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: atomix-memory-storage-controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/status
+  - pods/ephemeralcontainers
+  - services
+  - endpoints
+  - events
+  - configmaps
+  - secrets
+  - serviceaccounts
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - '*'
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - '*'
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  verbs:
+  - '*'
+- apiGroups:
+  - cloud.atomix.io
+  - storage.cloud.atomix.io
+  - atomix.io
+  - primitives.atomix.io
+  - storage.atomix.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: atomix-memory-storage-controller
+subjects:
+- kind: ServiceAccount
+  name: atomix-memory-storage-controller
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: atomix-memory-storage-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atomix-memory-storage-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: atomix-memory-storage-controller
+  template:
+    metadata:
+      labels:
+        name: atomix-memory-storage-controller
+    spec:
+      serviceAccountName: atomix-memory-storage-controller
+      containers:
+      - name: controller
+        image: atomix/atomix-memory-storage-controller:v0.6.0
+        imagePullPolicy: IfNotPresent
+        readinessProbe:
+          exec:
+            command:
+            - stat
+            - /tmp/atomix-controller-ready
+          initialDelaySeconds: 4
+          periodSeconds: 10
+          failureThreshold: 1
+        env:
+        - name: CONTROLLER_NAME
+          value: atomix-memory-storage-controller
+        - name: CONTROLLER_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: DEFAULT_NODE_V2BETA1_IMAGE
+          value: atomix/atomix-memory-storage-node:v0.6.0

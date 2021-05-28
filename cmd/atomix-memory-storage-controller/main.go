@@ -1,4 +1,4 @@
-// Copyright 2019-present Open Networking Foundation.
+// Copyright 2020-present Open Networking Foundation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,16 +17,20 @@ package main
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	core "github.com/atomix/atomix-controller/pkg/apis/core/v2beta1"
+	primitives "github.com/atomix/atomix-controller/pkg/apis/primitives/v2beta1"
+	logutil "github.com/atomix/atomix-controller/pkg/controller/util/log"
+	"github.com/atomix/atomix-go-framework/pkg/atomix/logging"
+	storagev2beta1 "github.com/atomix/atomix-memory-storage/pkg/controller/storage/v2beta1"
 
-	"github.com/atomix/cache-storage-controller/pkg/controller"
+	storagev1beta1 "github.com/atomix/atomix-memory-storage/pkg/controller/storage/v1beta1"
 
 	"os"
 	"runtime"
 
-	"github.com/atomix/cache-storage-controller/pkg/apis"
-	"github.com/atomix/kubernetes-controller/pkg/controller/util/leader"
-	"github.com/atomix/kubernetes-controller/pkg/controller/util/ready"
+	"github.com/atomix/atomix-controller/pkg/controller/util/leader"
+	"github.com/atomix/atomix-controller/pkg/controller/util/ready"
+	"github.com/atomix/atomix-memory-storage/pkg/apis"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
-var log = logf.Log.WithName("cmd")
+var log = logging.GetLogger("main")
 
 func printVersion() {
 	log.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
@@ -42,14 +46,15 @@ func printVersion() {
 }
 
 func main() {
+	logging.SetLevel(logging.DebugLevel)
+	logf.SetLogger(logutil.NewControllerLogger("atomix", "controller", "memory"))
+
 	var namespace string
 	if len(os.Args) > 1 {
 		namespace = os.Args[1]
 	}
 
 	printVersion()
-
-	logf.SetLogger(zap.New())
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
@@ -86,8 +91,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup the TestStorage controller
-	if err := controller.Add(mgr); err != nil {
+	// Setup Scheme for primitive resources
+	if err := primitives.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	// Setup Scheme for storage resources
+	if err := core.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	// Add the storage/v1beta1 controllers
+	if err := storagev1beta1.AddControllers(mgr); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	// Add the storage/v2beta1 controllers
+	if err := storagev2beta1.AddControllers(mgr); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}

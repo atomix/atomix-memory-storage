@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controller
+package v1beta1
 
 import (
 	"context"
-	"github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
+	"github.com/atomix/atomix-memory-storage/pkg/apis/storage/v1beta1"
 	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,9 +27,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-// Add creates a new Partition ManagementGroup and adds it to the Manager. The Manager will set fields on the ManagementGroup
+// AddControllers creates a new Partition ManagementGroup and adds it to the Manager. The Manager will set fields on the ManagementGroup
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
+func AddControllers(mgr manager.Manager) error {
 	log.Info("Add manager")
 	r := &Reconciler{
 		client: mgr.GetClient(),

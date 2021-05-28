@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controller
+package v1beta1
 
 import (
 	"context"
 	"fmt"
 	api "github.com/atomix/api/proto/atomix/database"
-	"github.com/atomix/cache-storage-controller/pkg/apis/storage/v1beta1"
+	"github.com/atomix/atomix-memory-storage/pkg/apis/storage/v1beta1"
 	"github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
 	"github.com/atomix/kubernetes-controller/pkg/controller/util/k8s"
 	"github.com/gogo/protobuf/jsonpb"

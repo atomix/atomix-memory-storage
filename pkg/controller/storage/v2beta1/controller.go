@@ -1,4 +1,4 @@
-// Copyright 2019-present Open Networking Foundation.
+// Copyright 2020-present Open Networking Foundation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,15 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apis
+package v2beta1
 
 import (
-	storagev1beta1 "github.com/atomix/atomix-memory-storage/pkg/apis/storage/v1beta1"
-	atomixv1beta3 "github.com/atomix/kubernetes-controller/pkg/apis/cloud/v1beta3"
+	"github.com/atomix/atomix-go-framework/pkg/atomix/logging"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-func init() {
-	// register the types with the Scheme so the components can map objects to GroupVersionKinds and back
-	AddToSchemes = append(AddToSchemes, storagev1beta1.SchemeBuilder.AddToScheme)
-	AddToSchemes = append(AddToSchemes, atomixv1beta3.SchemeBuilder.AddToScheme)
+var log = logging.GetLogger("atomix", "controller", "raft")
+
+// AddControllers creates a new Partition ManagementGroup and adds it to the Manager. The Manager will set fields on the ManagementGroup
+// and Start it when the Manager is Started.
+func AddControllers(mgr manager.Manager) error {
+	if err := addMemoryStoreController(mgr); err != nil {
+		return err
+	}
+	return nil
 }
