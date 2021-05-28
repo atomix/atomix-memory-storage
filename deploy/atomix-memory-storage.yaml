@@ -36,7 +36,7 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: memorystore.storage.atomix.io
+  name: memorystores.storage.atomix.io
 spec:
   group: storage.atomix.io
   names:
@@ -142,7 +142,7 @@ spec:
   versions:
   - name: v2beta1
     driver:
-      image: atomix/atomix-memory-storage-driver:v0.6.0
+      image: atomix/atomix-memory-storage-driver:latest
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -236,7 +236,7 @@ spec:
       serviceAccountName: atomix-memory-storage-controller
       containers:
       - name: controller
-        image: atomix/atomix-memory-storage-controller:v0.6.0
+        image: atomix/atomix-memory-storage-controller:latest
         imagePullPolicy: IfNotPresent
         readinessProbe:
           exec:
@@ -262,4 +262,4 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: DEFAULT_NODE_V2BETA1_IMAGE
-          value: atomix/atomix-memory-storage-node:v0.6.0
+          value: atomix/atomix-memory-storage-node:latest

@@ -2,6 +2,6 @@ FROM alpine:3.9
 
 USER nobody
 
-ADD build/cache-storage-controller/_output/cache-storage-controller /usr/local/bin/cache-storage-controller
+ADD build/_output/atomix-memory-storage-controller /usr/local/bin/atomix-memory-storage-controller
 
-ENTRYPOINT ["cache-storage-controller"]
+ENTRYPOINT ["atomix-memory-storage-controller"]
