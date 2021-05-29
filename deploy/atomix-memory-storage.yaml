@@ -137,12 +137,12 @@ kind: StoragePlugin
 metadata:
   name: memory.storage.atomix.io
 spec:
-  group: storage.atomix.io
-  kind: MemoryStore
-  versions:
-  - name: v2beta1
-    driver:
-      image: atomix/atomix-memory-storage-driver:latest
+  protocol:
+    group: storage.atomix.io
+    kind: MemoryStore
+  drivers:
+  - version: v2beta1
+    image: atomix/atomix-memory-storage-driver:latest
 ---
 apiVersion: v1
 kind: ServiceAccount
