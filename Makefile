@@ -47,4 +47,4 @@ kind: images
 push: # @HELP push atomix-memory-node Docker image
 	docker push atomix/atomix-memory-storage-node:${STORAGE_VERSION}
 	docker push atomix/atomix-memory-storage-driver:${STORAGE_VERSION}
-	docker push atomix/atomix-memory-storage-controller:${ATOMIX_memory_STSTORAGE_VERSIONORAGE_VERSION}
+	docker push atomix/atomix-memory-storage-controller:${STORAGE_VERSION}
