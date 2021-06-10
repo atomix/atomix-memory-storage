@@ -12,7 +12,7 @@ endif
 all: build
 
 build: # @HELP build the source code
-build: deps license_check linters
+build: license_check linters
 	GOOS=linux GOARCH=amd64 go build -gcflags=-trimpath=${GOPATH} -asmflags=-trimpath=${GOPATH} -o build/_output/atomix-memory-storage-node ./cmd/atomix-memory-storage-node
 	GOOS=linux GOARCH=amd64 go build -gcflags=-trimpath=${GOPATH} -asmflags=-trimpath=${GOPATH} -o build/_output/atomix-memory-storage-driver ./cmd/atomix-memory-storage-driver
 	GOOS=linux GOARCH=amd64 go build -gcflags=-trimpath=${GOPATH} -asmflags=-trimpath=${GOPATH} -o build/_output/atomix-memory-storage-controller ./cmd/atomix-memory-storage-controller
@@ -23,7 +23,7 @@ deps: # @HELP ensure that the required dependencies are in place
 	bash -c "diff -u <(echo -n) <(git diff go.sum)"
 
 test: # @HELP run the unit tests and source code validation
-test: build
+test: deps build
 	go test github.com/atomix/atomix-memory-storage-controller/...
 
 linters: # @HELP examines Go source code and reports coding problems

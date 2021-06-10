@@ -4,10 +4,10 @@ go 1.13
 
 require (
 	github.com/atomix/api v0.3.3
-	github.com/atomix/atomix-api/go v0.4.4
+	github.com/atomix/atomix-api/go v0.4.5
 	github.com/atomix/atomix-controller v0.5.4
-	github.com/atomix/atomix-go-framework v0.6.11
-	github.com/atomix/atomix-go-local v0.6.10
+	github.com/atomix/atomix-go-framework v0.7.0
+	github.com/atomix/atomix-go-local v0.7.0
 	github.com/atomix/kubernetes-controller v0.4.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/hashicorp/golang-lru v0.5.3 // indirect

@@ -40,14 +40,13 @@ import (
 )
 
 const (
-	apiPort               = 5678
-	defaultImageEnv       = "DEFAULT_NODE_V2BETA1_IMAGE"
-	defaultImage          = "atomix/atomix-memory-storage-node:latest"
-	headlessServiceSuffix = "hs"
-	appLabel              = "app"
-	protocolLabel         = "protocol"
-	clusterLabel          = "cluster"
-	appAtomix             = "atomix"
+	apiPort         = 5678
+	defaultImageEnv = "DEFAULT_NODE_V2BETA1_IMAGE"
+	defaultImage    = "atomix/atomix-memory-storage-node:latest"
+	appLabel        = "app"
+	protocolLabel   = "protocol"
+	clusterLabel    = "cluster"
+	appAtomix       = "atomix"
 )
 
 const (
@@ -383,7 +382,6 @@ func newNodeConfigString(protocol *storagev2beta1.MemoryStore, cluster int) (str
 	replicas := []protocolapi.ProtocolReplica{
 		{
 			ID:      getClusterName(protocol, cluster),
-			Host:    fmt.Sprintf("%s.%s.svc.cluster.local", getClusterName(protocol, cluster), protocol.Namespace),
 			APIPort: apiPort,
 		},
 	}
@@ -451,18 +449,8 @@ func (r *Reconciler) addDeployment(protocol *storagev2beta1.MemoryStore, cluster
 							Image:           image,
 							ImagePullPolicy: protocol.Spec.ImagePullPolicy,
 							Args: []string{
-								"$(NODE_ID)",
+								getClusterName(protocol, cluster),
 								fmt.Sprintf("%s/%s", configPath, clusterConfigFile),
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "NODE_ID",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.name",
-										},
-									},
-								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -496,11 +484,11 @@ func (r *Reconciler) addDeployment(protocol *storagev2beta1.MemoryStore, cluster
 }
 
 func (r *Reconciler) reconcileService(protocol *storagev2beta1.MemoryStore, cluster int) error {
-	log.Info("Reconcile memory protocol headless service")
+	log.Info("Reconcile memory protocol service")
 	service := &corev1.Service{}
 	name := types.NamespacedName{
 		Namespace: protocol.Namespace,
-		Name:      getClusterHeadlessServiceName(protocol, cluster),
+		Name:      getClusterName(protocol, cluster),
 	}
 	err := r.client.Get(context.TODO(), name, service)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -510,16 +498,13 @@ func (r *Reconciler) reconcileService(protocol *storagev2beta1.MemoryStore, clus
 }
 
 func (r *Reconciler) addService(protocol *storagev2beta1.MemoryStore, cluster int) error {
-	log.Info("Creating headless memory service", "Name", protocol.Name, "Namespace", protocol.Namespace)
+	log.Info("Creating memory service", "Name", protocol.Name, "Namespace", protocol.Namespace)
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getClusterHeadlessServiceName(protocol, cluster),
+			Name:      getClusterName(protocol, cluster),
 			Namespace: protocol.Namespace,
 			Labels:    newClusterLabels(protocol, cluster),
-			Annotations: map[string]string{
-				"service.alpha.kubernetes.io/tolerate-unready-endpoints": "true",
-			},
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -528,9 +513,7 @@ func (r *Reconciler) addService(protocol *storagev2beta1.MemoryStore, cluster in
 					Port: apiPort,
 				},
 			},
-			PublishNotReadyAddresses: true,
-			ClusterIP:                "None",
-			Selector:                 newClusterLabels(protocol, cluster),
+			Selector: newClusterLabels(protocol, cluster),
 		},
 	}
 
@@ -553,19 +536,9 @@ func getClusterForPartitionID(protocol *storagev2beta1.MemoryStore, partition in
 	return (partition % getClusters(protocol)) + 1
 }
 
-// getClusterResourceName returns the given resource name for the given cluster
-func getClusterResourceName(protocol *storagev2beta1.MemoryStore, cluster int, resource string) string {
-	return fmt.Sprintf("%s-%s", getClusterName(protocol, cluster), resource)
-}
-
 // getClusterName returns the cluster name
 func getClusterName(protocol *storagev2beta1.MemoryStore, cluster int) string {
 	return fmt.Sprintf("%s-%d", protocol.Name, cluster)
-}
-
-// getClusterHeadlessServiceName returns the headless service name for the given cluster
-func getClusterHeadlessServiceName(protocol *storagev2beta1.MemoryStore, cluster int) string {
-	return getClusterResourceName(protocol, cluster, headlessServiceSuffix)
 }
 
 // getClusterDNSName returns the fully qualified DNS name for the given pod ID
@@ -574,7 +547,7 @@ func getClusterDNSName(protocol *storagev2beta1.MemoryStore, cluster int) string
 	if domain == "" {
 		domain = "cluster.local"
 	}
-	return fmt.Sprintf("%s.%s.%s.svc.%s", getClusterName(protocol, cluster), getClusterHeadlessServiceName(protocol, cluster), protocol.Namespace, domain)
+	return fmt.Sprintf("%s.%s.svc.%s", getClusterName(protocol, cluster), protocol.Namespace, domain)
 }
 
 // newClusterLabels returns the labels for the given cluster
